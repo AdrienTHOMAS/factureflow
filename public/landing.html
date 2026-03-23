@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FactureFlow — Facturation gratuite pour auto-entrepreneurs</title>
+  <meta name="description" content="Créez vos factures et devis gratuitement. Application de facturation 100% conforme pour auto-entrepreneurs et micro-entreprises françaises.">
+  <meta name="keywords" content="facturation, auto-entrepreneur, micro-entreprise, devis, facture, gratuit, français, TVA, SIRET">
+  
+  <!-- Open Graph -->
+  <meta property="og:title" content="FactureFlow — Facturation gratuite pour auto-entrepreneurs">
+  <meta property="og:description" content="Créez vos factures et devis en 2 minutes. 100% gratuit, 100% conforme.">
+  <meta property="og:type" content="website">
+  
+  <!-- Schema.org -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "FactureFlow",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "EUR"
+    },
+    "description": "Application de facturation et devis pour auto-entrepreneurs français"
+  }
+  </script>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    :root {
+      --bg: #0a0a14;
+      --card: #12122a;
+      --surface: #1a1a35;
+      --gold: #e2b714;
+      --gold-dim: #b08c0e;
+      --gold-soft: rgba(226,183,20,0.08);
+      --text: #e8e8f0;
+      --muted: #8888aa;
+      --white: #ffffff;
+      --success: #27ae60;
+      --radius: 12px;
+    }
+    
+    html { scroll-behavior: smooth; }
+    
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    
+    a { color: var(--gold); text-decoration: none; }
+    
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+    
+    /* ── Nav ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      backdrop-filter: blur(20px);
+      background: rgba(10,10,20,0.85);
+      border-bottom: 1px solid rgba(226,183,20,0.1);
+    }
+    
+    .nav-inner {
+      max-width: 1100px; margin: 0 auto; padding: 16px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+      font-family: 'Syne', sans-serif; font-weight: 800; font-size: 20px;
+      color: var(--white);
+    }
+    
+    .nav-logo {
+      width: 36px; height: 36px; border-radius: 8px;
+      background: var(--gold); display: flex; align-items: center; justify-content: center;
+      font-family: 'Syne', sans-serif; font-weight: 800; font-size: 18px; color: var(--bg);
+    }
+    
+    .nav-links { display: flex; gap: 28px; align-items: center; }
+    .nav-links a { color: var(--muted); font-size: 14px; font-weight: 500; transition: color 0.2s; }
+    .nav-links a:hover { color: var(--white); }
+    
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 22px; border-radius: 8px; font-weight: 600; font-size: 14px;
+      border: none; cursor: pointer; transition: all 0.2s;
+      font-family: inherit; text-decoration: none;
+    }
+    
+    .btn-gold { background: var(--gold); color: var(--bg); }
+    .btn-gold:hover { background: #f0c820; transform: translateY(-1px); }
+    .btn-outline { background: transparent; color: var(--gold); border: 1px solid rgba(226,183,20,0.3); }
+    .btn-outline:hover { border-color: var(--gold); background: var(--gold-soft); }
+    .btn-lg { padding: 14px 32px; font-size: 16px; border-radius: 10px; }
+    
+    /* ── Hero ── */
+    .hero {
+      padding: 160px 0 100px;
+      text-align: center;
+      position: relative;
+    }
+    
+    .hero::before {
+      content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      width: 600px; height: 600px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(226,183,20,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 16px; border-radius: 20px;
+      background: var(--gold-soft); border: 1px solid rgba(226,183,20,0.15);
+      font-size: 13px; color: var(--gold); font-weight: 500;
+      margin-bottom: 28px;
+    }
+    
+    .hero h1 {
+      font-family: 'Syne', sans-serif; font-size: clamp(36px, 5vw, 56px);
+      font-weight: 800; line-height: 1.15;
+      background: linear-gradient(135deg, var(--white) 0%, var(--gold) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 20px;
+    }
+    
+    .hero p {
+      font-size: 18px; color: var(--muted); max-width: 580px; margin: 0 auto 36px;
+      line-height: 1.7;
+    }
+    
+    .hero-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    
+    .hero-stats {
+      display: flex; gap: 48px; justify-content: center; margin-top: 60px;
+      padding-top: 40px; border-top: 1px solid rgba(226,183,20,0.08);
+    }
+    
+    .hero-stat { text-align: center; }
+    .hero-stat .value { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; color: var(--gold); }
+    .hero-stat .label { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    
+    /* ── Features ── */
+    .section { padding: 80px 0; }
+    .section-header { text-align: center; margin-bottom: 56px; }
+    .section-header h2 {
+      font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .section-header p { color: var(--muted); font-size: 16px; max-width: 500px; margin: 0 auto; }
+    
+    .features-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px;
+    }
+    
+    .feature-card {
+      background: var(--card); border-radius: var(--radius);
+      padding: 32px; border: 1px solid rgba(255,255,255,0.04);
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    
+    .feature-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(226,183,20,0.15);
+    }
+    
+    .feature-icon {
+      width: 48px; height: 48px; border-radius: 10px;
+      background: var(--gold-soft); display: flex; align-items: center; justify-content: center;
+      font-size: 22px; margin-bottom: 16px;
+    }
+    
+    .feature-card h3 { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+    .feature-card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
+    
+    /* ── Compliance ── */
+    .compliance-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    
+    .compliance-item {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 20px; background: var(--card); border-radius: var(--radius);
+      border: 1px solid rgba(255,255,255,0.04);
+    }
+    
+    .compliance-check {
+      width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+      background: rgba(39,174,96,0.15); color: var(--success);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; margin-top: 2px;
+    }
+    
+    .compliance-item h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .compliance-item p { font-size: 13px; color: var(--muted); }
+    
+    /* ── CTA ── */
+    .cta-section {
+      text-align: center; padding: 80px 0;
+    }
+    
+    .cta-box {
+      background: linear-gradient(135deg, var(--card) 0%, rgba(226,183,20,0.05) 100%);
+      border: 1px solid rgba(226,183,20,0.12);
+      border-radius: 20px; padding: 56px 40px;
+    }
+    
+    .cta-box h2 {
+      font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 700;
+      margin-bottom: 12px;
+    }
+    
+    .cta-box p { color: var(--muted); font-size: 16px; margin-bottom: 28px; }
+    
+    /* ── Email capture ── */
+    .email-form {
+      display: flex; gap: 10px; justify-content: center; max-width: 480px; margin: 0 auto;
+      flex-wrap: wrap;
+    }
+    
+    .email-form input {
+      flex: 1; min-width: 240px; padding: 14px 18px;
+      background: var(--surface); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px; color: var(--text); font-size: 15px;
+      font-family: inherit; outline: none;
+    }
+    
+    .email-form input:focus { border-color: var(--gold); }
+    .email-form input::placeholder { color: var(--muted); }
+    
+    .email-success {
+      display: none; padding: 16px; background: rgba(39,174,96,0.1);
+      border: 1px solid rgba(39,174,96,0.2); border-radius: 10px;
+      color: var(--success); font-weight: 500; margin-top: 12px;
+    }
+    
+    /* ── Footer ── */
+    footer {
+      padding: 40px 0; border-top: 1px solid rgba(255,255,255,0.04);
+      text-align: center; color: var(--muted); font-size: 13px;
+    }
+    
+    footer a { color: var(--gold); }
+    
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .hero { padding: 120px 0 60px; }
+      .hero-stats { gap: 24px; flex-wrap: wrap; }
+      .section { padding: 60px 0; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <div class="nav-logo">F</div>
+      FactureFlow
+    </div>
+    <div class="nav-links">
+      <a href="#fonctionnalites">Fonctionnalités</a>
+      <a href="#conformite">Conformité</a>
+      <a href="#commencer">Commencer</a>
+      <a href="/app" class="btn btn-gold">Ouvrir l'app →</a>
+    </div>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="container">
+    <div class="hero-badge">✨ 100% gratuit — aucune carte bancaire</div>
+    <h1>Facturez comme un pro,<br>sans prise de tête</h1>
+    <p>L'application de facturation pensée pour les auto-entrepreneurs français. Créez vos devis et factures en 2 minutes, conformes à la loi.</p>
+    <div class="hero-cta">
+      <a href="/app" class="btn btn-gold btn-lg">Créer ma première facture →</a>
+      <a href="#fonctionnalites" class="btn btn-outline btn-lg">Voir les fonctionnalités</a>
+    </div>
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <div class="value">0€</div>
+        <div class="label">Pour toujours</div>
+      </div>
+      <div class="hero-stat">
+        <div class="value">2 min</div>
+        <div class="label">Pour facturer</div>
+      </div>
+      <div class="hero-stat">
+        <div class="value">100%</div>
+        <div class="label">Conforme CGI</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="fonctionnalites">
+  <div class="container">
+    <div class="section-header">
+      <h2>Tout ce qu'il faut. Rien de superflu.</h2>
+      <p>Pas de fonctionnalités inutiles, pas d'upsells agressifs. Juste un outil qui marche.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">📄</div>
+        <h3>Factures professionnelles</h3>
+        <p>Numérotation séquentielle automatique, mentions légales, TVA ou exonération art. 293 B — tout est conforme.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📋</div>
+        <h3>Devis en 2 clics</h3>
+        <p>Créez des devis, suivez leur statut (envoyé, accepté, refusé) et convertissez-les en factures.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">👥</div>
+        <h3>Gestion clients</h3>
+        <p>Carnet d'adresses intégré avec SIRET, coordonnées, historique. Tout au même endroit.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3>Tableau de bord</h3>
+        <p>CA annuel et mensuel, montants en attente, graphiques de revenus. Votre activité d'un coup d'œil.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📥</div>
+        <h3>Export PDF</h3>
+        <p>Téléchargez vos factures et devis en PDF. Design professionnel avec vos coordonnées et IBAN.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🌙</div>
+        <h3>Dark mode élégant</h3>
+        <p>Interface moderne et agréable. Travaillez de nuit sans vous cramer les yeux.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="conformite" style="background: rgba(226,183,20,0.02);">
+  <div class="container">
+    <div class="section-header">
+      <h2>Conforme au droit français</h2>
+      <p>Pas besoin de vérifier vous-même — on s'en charge.</p>
+    </div>
+    <div class="compliance-grid">
+      <div class="compliance-item">
+        <div class="compliance-check">✓</div>
+        <div>
+          <h4>Article 293 B du CGI</h4>
+          <p>Mention TVA non applicable automatique pour les micro-entreprises</p>
+        </div>
+      </div>
+      <div class="compliance-item">
+        <div class="compliance-check">✓</div>
+        <div>
+          <h4>Numérotation séquentielle</h4>
+          <p>FACT-2026-001, FACT-2026-002... conforme aux obligations légales</p>
+        </div>
+      </div>
+      <div class="compliance-item">
+        <div class="compliance-check">✓</div>
+        <div>
+          <h4>Mentions obligatoires</h4>
+          <p>SIRET, conditions de paiement, pénalités de retard incluses</p>
+        </div>
+      </div>
+      <div class="compliance-item">
+        <div class="compliance-check">✓</div>
+        <div>
+          <h4>TVA française</h4>
+          <p>Taux 20%, 10%, 5.5%, 2.1% supportés avec calcul automatique</p>
+        </div>
+      </div>
+      <div class="compliance-item">
+        <div class="compliance-check">✓</div>
+        <div>
+          <h4>Coordonnées bancaires</h4>
+          <p>IBAN et BIC affichés sur les factures pour faciliter le paiement</p>
+        </div>
+      </div>
+      <div class="compliance-item">
+        <div class="compliance-check">✓</div>
+        <div>
+          <h4>Devis conforme</h4>
+          <p>Mention "Bon pour accord", validité, conditions — tout y est</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta-section" id="commencer">
+  <div class="container">
+    <div class="cta-box">
+      <h2>Prêt à facturer proprement ?</h2>
+      <p>Pas d'inscription, pas de carte bancaire. Commencez maintenant.</p>
+      <a href="/app" class="btn btn-gold btn-lg" style="margin-bottom: 24px;">Ouvrir FactureFlow →</a>
+      <p style="font-size: 13px; color: var(--muted); margin-bottom: 32px;">
+        Vos données restent sur votre navigateur. Rien n'est envoyé à des tiers.
+      </p>
+      
+      <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 28px; margin-top: 12px;">
+        <p style="font-size: 14px; color: var(--muted); margin-bottom: 16px;">
+          📬 Recevez les mises à jour et nouvelles fonctionnalités
+        </p>
+        <form class="email-form" id="emailForm" onsubmit="return handleEmail(event)">
+          <input type="email" placeholder="votre@email.fr" required id="emailInput">
+          <button type="submit" class="btn btn-gold">S'inscrire</button>
+        </form>
+        <div class="email-success" id="emailSuccess">
+          ✅ Merci ! Vous serez notifié des prochaines mises à jour.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p>FactureFlow — Facturation gratuite pour auto-entrepreneurs · <a href="https://github.com/AdrienTHOMAS/factureflow" target="_blank">Open Source sur GitHub</a></p>
+    <p style="margin-top: 8px; font-size: 12px;">© 2026 · Fait avec 💛 en France</p>
+  </div>
+</footer>
+
+<script>
+async function handleEmail(e) {
+  e.preventDefault();
+  const email = document.getElementById('emailInput').value;
+  try {
+    await fetch('/api/waitlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+  } catch (err) { /* silent */ }
+  document.getElementById('emailForm').style.display = 'none';
+  document.getElementById('emailSuccess').style.display = 'block';
+  return false;
+}
+</script>
+
+</body>
+</html>
