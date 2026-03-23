@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db');
 
+// Helper : user_id depuis la session (null si pas de session, pour données legacy)
+function uid(req) {
+  return req.session && req.session.userId ? req.session.userId : null;
+}
+
 // ─── Business Profile ────────────────────────────────────────────────────────
 
 router.get('/profile', async (req, res) => {
@@ -31,14 +36,22 @@ router.put('/profile', async (req, res) => {
 router.get('/clients', async (req, res) => {
   try {
     const db = await getDb();
-    res.json(await db.all('SELECT * FROM clients ORDER BY name ASC'));
+    const userId = uid(req);
+    // Chaque user voit ses clients ; les données legacy (user_id NULL) restent accessibles
+    const clients = userId
+      ? await db.all('SELECT * FROM clients WHERE user_id = ? OR user_id IS NULL ORDER BY name ASC', userId)
+      : await db.all('SELECT * FROM clients WHERE user_id IS NULL ORDER BY name ASC');
+    res.json(clients);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.get('/clients/:id', async (req, res) => {
   try {
     const db = await getDb();
-    const client = await db.get('SELECT * FROM clients WHERE id = ?', req.params.id);
+    const userId = uid(req);
+    const client = userId
+      ? await db.get('SELECT * FROM clients WHERE id = ? AND (user_id = ? OR user_id IS NULL)', [req.params.id, userId])
+      : await db.get('SELECT * FROM clients WHERE id = ? AND user_id IS NULL', req.params.id);
     if (!client) return res.status(404).json({ error: 'Client not found' });
     res.json(client);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -49,9 +62,10 @@ router.post('/clients', async (req, res) => {
     const db = await getDb();
     const { name, email, address, city, postal_code, country, siret, phone, notes } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
+    const userId = uid(req);
     const result = await db.run(
-      `INSERT INTO clients (name,email,address,city,postal_code,country,siret,phone,notes) VALUES (?,?,?,?,?,?,?,?,?)`,
-      [name,email||'',address||'',city||'',postal_code||'',country||'France',siret||'',phone||'',notes||'']);
+      `INSERT INTO clients (user_id,name,email,address,city,postal_code,country,siret,phone,notes) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [userId,name,email||'',address||'',city||'',postal_code||'',country||'France',siret||'',phone||'',notes||'']);
     res.status(201).json({ id: result.lastID });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -61,10 +75,14 @@ router.put('/clients/:id', async (req, res) => {
     const db = await getDb();
     const { name, email, address, city, postal_code, country, siret, phone, notes } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
-    const result = await db.run(
+    const userId = uid(req);
+    const existing = userId
+      ? await db.get('SELECT * FROM clients WHERE id = ? AND (user_id = ? OR user_id IS NULL)', [req.params.id, userId])
+      : await db.get('SELECT * FROM clients WHERE id = ? AND user_id IS NULL', req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Client not found' });
+    await db.run(
       `UPDATE clients SET name=?,email=?,address=?,city=?,postal_code=?,country=?,siret=?,phone=?,notes=? WHERE id=?`,
       [name,email||'',address||'',city||'',postal_code||'',country||'France',siret||'',phone||'',notes||'',req.params.id]);
-    if (result.changes === 0) return res.status(404).json({ error: 'Client not found' });
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -72,10 +90,14 @@ router.put('/clients/:id', async (req, res) => {
 router.delete('/clients/:id', async (req, res) => {
   try {
     const db = await getDb();
+    const userId = uid(req);
+    const existing = userId
+      ? await db.get('SELECT * FROM clients WHERE id = ? AND (user_id = ? OR user_id IS NULL)', [req.params.id, userId])
+      : await db.get('SELECT * FROM clients WHERE id = ? AND user_id IS NULL', req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Client not found' });
     const docCount = await db.get('SELECT COUNT(*) as count FROM documents WHERE client_id = ?', req.params.id);
     if (docCount.count > 0) return res.status(400).json({ error: "Ce client a des documents associés." });
-    const result = await db.run('DELETE FROM clients WHERE id = ?', req.params.id);
-    if (result.changes === 0) return res.status(404).json({ error: 'Client not found' });
+    await db.run('DELETE FROM clients WHERE id = ?', req.params.id);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -103,9 +125,19 @@ router.get('/documents', async (req, res) => {
   try {
     const db = await getDb();
     const { type, status, client_id } = req.query;
+    const userId = uid(req);
+
     let query = `SELECT d.*,c.name as client_name,c.email as client_email
       FROM documents d LEFT JOIN clients c ON d.client_id=c.id WHERE 1=1`;
     const params = [];
+
+    if (userId) {
+      query += ' AND (d.user_id = ? OR d.user_id IS NULL)';
+      params.push(userId);
+    } else {
+      query += ' AND d.user_id IS NULL';
+    }
+
     if (type) { query += ' AND d.type=?'; params.push(type); }
     if (status) { query += ' AND d.status=?'; params.push(status); }
     if (client_id) { query += ' AND d.client_id=?'; params.push(client_id); }
@@ -117,12 +149,17 @@ router.get('/documents', async (req, res) => {
 router.get('/documents/:id', async (req, res) => {
   try {
     const db = await getDb();
+    const userId = uid(req);
+    const userFilter = userId ? '(d.user_id = ? OR d.user_id IS NULL)' : 'd.user_id IS NULL';
+    const queryParams = userId ? [req.params.id, userId] : [req.params.id];
+
     const doc = await db.get(`
       SELECT d.*,c.name as client_name,c.email as client_email,
              c.address as client_address,c.city as client_city,
              c.postal_code as client_postal_code,c.country as client_country,
              c.siret as client_siret,c.phone as client_phone
-      FROM documents d LEFT JOIN clients c ON d.client_id=c.id WHERE d.id=?`, req.params.id);
+      FROM documents d LEFT JOIN clients c ON d.client_id=c.id
+      WHERE d.id=? AND ${userFilter}`, queryParams);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
     doc.items = await db.all('SELECT * FROM document_items WHERE document_id=? ORDER BY sort_order ASC', req.params.id);
     res.json(doc);
@@ -136,6 +173,7 @@ router.post('/documents', async (req, res) => {
     if (!type || !client_id) return res.status(400).json({ error: 'Type and client are required' });
     if (!items || items.length === 0) return res.status(400).json({ error: 'At least one item is required' });
 
+    const userId = uid(req);
     const number = await generateDocumentNumber(db, type);
     const tvaRate = parseFloat(tva_rate) || 0;
     let totalHT = 0;
@@ -151,8 +189,8 @@ router.post('/documents', async (req, res) => {
     const totalTTC = Math.round((totalHT + tvaAmount) * 100) / 100;
 
     const result = await db.run(
-      `INSERT INTO documents (type,number,client_id,date,due_date,notes,total_ht,total_ttc,tva_rate,tva_amount) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      [type, number, client_id, date||new Date().toISOString().split('T')[0], due_date||null, notes||'', totalHT, totalTTC, tvaRate, tvaAmount]);
+      `INSERT INTO documents (user_id,type,number,client_id,date,due_date,notes,total_ht,total_ttc,tva_rate,tva_amount) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [userId, type, number, client_id, date||new Date().toISOString().split('T')[0], due_date||null, notes||'', totalHT, totalTTC, tvaRate, tvaAmount]);
 
     const docId = result.lastID;
     for (const item of processedItems) {
@@ -169,7 +207,10 @@ router.put('/documents/:id', async (req, res) => {
     const db = await getDb();
     const { client_id, date, due_date, status, notes, tva_rate, items } = req.body;
     const docId = parseInt(req.params.id);
-    const existing = await db.get('SELECT * FROM documents WHERE id=?', docId);
+    const userId = uid(req);
+    const userFilter = userId ? '(user_id = ? OR user_id IS NULL)' : 'user_id IS NULL';
+    const queryParams = userId ? [docId, userId] : [docId];
+    const existing = await db.get(`SELECT * FROM documents WHERE id=? AND ${userFilter}`, queryParams);
     if (!existing) return res.status(404).json({ error: 'Document not found' });
 
     const tvaRate = tva_rate !== undefined ? parseFloat(tva_rate) : existing.tva_rate;
@@ -218,8 +259,12 @@ router.patch('/documents/:id/status', async (req, res) => {
     const { status } = req.body;
     const validStatuses = ['draft','sent','paid','cancelled','accepted','refused'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Invalid status' });
-    const result = await db.run(`UPDATE documents SET status=?,updated_at=datetime('now') WHERE id=?`, [status, req.params.id]);
-    if (result.changes === 0) return res.status(404).json({ error: 'Document not found' });
+    const userId = uid(req);
+    const userFilter = userId ? '(user_id = ? OR user_id IS NULL)' : 'user_id IS NULL';
+    const queryParams = userId ? [req.params.id, userId] : [req.params.id];
+    const existing = await db.get(`SELECT id FROM documents WHERE id=? AND ${userFilter}`, queryParams);
+    if (!existing) return res.status(404).json({ error: 'Document not found' });
+    await db.run(`UPDATE documents SET status=?,updated_at=datetime('now') WHERE id=?`, [status, req.params.id]);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -227,8 +272,12 @@ router.patch('/documents/:id/status', async (req, res) => {
 router.delete('/documents/:id', async (req, res) => {
   try {
     const db = await getDb();
-    const result = await db.run('DELETE FROM documents WHERE id=?', req.params.id);
-    if (result.changes === 0) return res.status(404).json({ error: 'Document not found' });
+    const userId = uid(req);
+    const userFilter = userId ? '(user_id = ? OR user_id IS NULL)' : 'user_id IS NULL';
+    const queryParams = userId ? [req.params.id, userId] : [req.params.id];
+    const existing = await db.get(`SELECT id FROM documents WHERE id=? AND ${userFilter}`, queryParams);
+    if (!existing) return res.status(404).json({ error: 'Document not found' });
+    await db.run('DELETE FROM documents WHERE id=?', req.params.id);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -238,7 +287,10 @@ router.delete('/documents/:id', async (req, res) => {
 router.post('/documents/:id/convert', async (req, res) => {
   try {
     const db = await getDb();
-    const doc = await db.get('SELECT * FROM documents WHERE id=?', req.params.id);
+    const userId = uid(req);
+    const userFilter = userId ? '(user_id = ? OR user_id IS NULL)' : 'user_id IS NULL';
+    const queryParams = userId ? [req.params.id, userId] : [req.params.id];
+    const doc = await db.get(`SELECT * FROM documents WHERE id=? AND ${userFilter}`, queryParams);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
     if (doc.type !== 'quote') return res.status(400).json({ error: 'Only quotes can be converted to invoices' });
 
@@ -247,8 +299,8 @@ router.post('/documents/:id/convert', async (req, res) => {
     const todayStr = new Date().toISOString().split('T')[0];
 
     const result = await db.run(
-      `INSERT INTO documents (type,number,client_id,date,due_date,notes,total_ht,total_ttc,tva_rate,tva_amount) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      ['invoice', number, doc.client_id, todayStr, doc.due_date || null, doc.notes, doc.total_ht, doc.total_ttc, doc.tva_rate, doc.tva_amount]);
+      `INSERT INTO documents (user_id,type,number,client_id,date,due_date,notes,total_ht,total_ttc,tva_rate,tva_amount) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [userId, 'invoice', number, doc.client_id, todayStr, doc.due_date || null, doc.notes, doc.total_ht, doc.total_ttc, doc.tva_rate, doc.tva_amount]);
 
     const newId = result.lastID;
     for (const item of items) {
@@ -257,9 +309,7 @@ router.post('/documents/:id/convert', async (req, res) => {
         [newId, item.description, item.quantity, item.unit, item.unit_price, item.total, item.sort_order]);
     }
 
-    // Mark quote as accepted
     await db.run(`UPDATE documents SET status='accepted',updated_at=datetime('now') WHERE id=?`, req.params.id);
-
     res.status(201).json({ id: newId, number });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -269,7 +319,10 @@ router.post('/documents/:id/convert', async (req, res) => {
 router.post('/documents/:id/duplicate', async (req, res) => {
   try {
     const db = await getDb();
-    const doc = await db.get('SELECT * FROM documents WHERE id=?', req.params.id);
+    const userId = uid(req);
+    const userFilter = userId ? '(user_id = ? OR user_id IS NULL)' : 'user_id IS NULL';
+    const queryParams = userId ? [req.params.id, userId] : [req.params.id];
+    const doc = await db.get(`SELECT * FROM documents WHERE id=? AND ${userFilter}`, queryParams);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     const items = await db.all('SELECT * FROM document_items WHERE document_id=? ORDER BY sort_order ASC', req.params.id);
@@ -277,8 +330,8 @@ router.post('/documents/:id/duplicate', async (req, res) => {
     const todayStr = new Date().toISOString().split('T')[0];
 
     const result = await db.run(
-      `INSERT INTO documents (type,number,client_id,date,due_date,notes,total_ht,total_ttc,tva_rate,tva_amount,status) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [doc.type, number, doc.client_id, todayStr, doc.due_date || null, doc.notes, doc.total_ht, doc.total_ttc, doc.tva_rate, doc.tva_amount, 'draft']);
+      `INSERT INTO documents (user_id,type,number,client_id,date,due_date,notes,total_ht,total_ttc,tva_rate,tva_amount,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [userId, doc.type, number, doc.client_id, todayStr, doc.due_date || null, doc.notes, doc.total_ht, doc.total_ttc, doc.tva_rate, doc.tva_amount, 'draft']);
 
     const newId = result.lastID;
     for (const item of items) {
@@ -300,11 +353,27 @@ router.get('/search', async (req, res) => {
     if (!q) return res.json({ clients: [], documents: [] });
 
     const like = `%${q}%`;
+    const userId = uid(req);
+
+    const clientsQuery = userId
+      ? `SELECT * FROM clients WHERE (user_id = ? OR user_id IS NULL) AND (name LIKE ? OR email LIKE ? OR siret LIKE ?) ORDER BY name ASC LIMIT 10`
+      : `SELECT * FROM clients WHERE user_id IS NULL AND (name LIKE ? OR email LIKE ? OR siret LIKE ?) ORDER BY name ASC LIMIT 10`;
+
+    const docsQuery = userId
+      ? `SELECT d.*,c.name as client_name FROM documents d LEFT JOIN clients c ON d.client_id=c.id
+         WHERE (d.user_id = ? OR d.user_id IS NULL) AND (d.number LIKE ? OR c.name LIKE ? OR CAST(d.total_ht AS TEXT) LIKE ? OR CAST(d.total_ttc AS TEXT) LIKE ?)
+         ORDER BY d.created_at DESC LIMIT 10`
+      : `SELECT d.*,c.name as client_name FROM documents d LEFT JOIN clients c ON d.client_id=c.id
+         WHERE d.user_id IS NULL AND (d.number LIKE ? OR c.name LIKE ? OR CAST(d.total_ht AS TEXT) LIKE ? OR CAST(d.total_ttc AS TEXT) LIKE ?)
+         ORDER BY d.created_at DESC LIMIT 10`;
+
     const [clients, documents] = await Promise.all([
-      db.all(`SELECT * FROM clients WHERE name LIKE ? OR email LIKE ? OR siret LIKE ? ORDER BY name ASC LIMIT 10`, [like, like, like]),
-      db.all(`SELECT d.*,c.name as client_name FROM documents d LEFT JOIN clients c ON d.client_id=c.id
-        WHERE d.number LIKE ? OR c.name LIKE ? OR CAST(d.total_ht AS TEXT) LIKE ? OR CAST(d.total_ttc AS TEXT) LIKE ?
-        ORDER BY d.created_at DESC LIMIT 10`, [like, like, like, like])
+      userId
+        ? db.all(clientsQuery, [userId, like, like, like])
+        : db.all(clientsQuery, [like, like, like]),
+      userId
+        ? db.all(docsQuery, [userId, like, like, like, like])
+        : db.all(docsQuery, [like, like, like, like])
     ]);
 
     res.json({ clients, documents });
@@ -318,16 +387,20 @@ router.get('/stats', async (req, res) => {
     const db = await getDb();
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().getMonth() + 1;
+    const userId = uid(req);
+
+    const uf = userId ? '(user_id = ? OR user_id IS NULL)' : 'user_id IS NULL';
+    const p = (extra) => userId ? [userId, ...extra] : [...extra];
 
     const [yearlyRevenue, monthlyRevenue, invoiceCount, quoteCount, pendingAmount, clientCount, monthlyData, recentDocs] = await Promise.all([
-      db.get(`SELECT COALESCE(SUM(total_ht),0) as total FROM documents WHERE type='invoice' AND status='paid' AND strftime('%Y',date)=?`, String(currentYear)),
-      db.get(`SELECT COALESCE(SUM(total_ht),0) as total FROM documents WHERE type='invoice' AND status='paid' AND strftime('%Y',date)=? AND strftime('%m',date)=?`, [String(currentYear), String(currentMonth).padStart(2,'0')]),
-      db.get(`SELECT COUNT(*) as count FROM documents WHERE type='invoice' AND status!='cancelled'`),
-      db.get(`SELECT COUNT(*) as count FROM documents WHERE type='quote' AND status!='cancelled'`),
-      db.get(`SELECT COALESCE(SUM(total_ht),0) as total FROM documents WHERE type='invoice' AND status='sent'`),
-      db.get('SELECT COUNT(*) as count FROM clients'),
-      db.all(`SELECT strftime('%m',date) as month,COALESCE(SUM(total_ht),0) as total FROM documents WHERE type='invoice' AND status='paid' AND strftime('%Y',date)=? GROUP BY month ORDER BY month ASC`, String(currentYear)),
-      db.all(`SELECT d.id,d.type,d.number,d.date,d.status,d.total_ht,d.total_ttc,c.name as client_name FROM documents d LEFT JOIN clients c ON d.client_id=c.id ORDER BY d.created_at DESC LIMIT 5`)
+      db.get(`SELECT COALESCE(SUM(total_ht),0) as total FROM documents WHERE ${uf} AND type='invoice' AND status='paid' AND strftime('%Y',date)=?`, p([String(currentYear)])),
+      db.get(`SELECT COALESCE(SUM(total_ht),0) as total FROM documents WHERE ${uf} AND type='invoice' AND status='paid' AND strftime('%Y',date)=? AND strftime('%m',date)=?`, p([String(currentYear), String(currentMonth).padStart(2,'0')])),
+      db.get(`SELECT COUNT(*) as count FROM documents WHERE ${uf} AND type='invoice' AND status!='cancelled'`, userId ? [userId] : []),
+      db.get(`SELECT COUNT(*) as count FROM documents WHERE ${uf} AND type='quote' AND status!='cancelled'`, userId ? [userId] : []),
+      db.get(`SELECT COALESCE(SUM(total_ht),0) as total FROM documents WHERE ${uf} AND type='invoice' AND status='sent'`, userId ? [userId] : []),
+      db.get(`SELECT COUNT(*) as count FROM clients WHERE ${uf}`, userId ? [userId] : []),
+      db.all(`SELECT strftime('%m',date) as month,COALESCE(SUM(total_ht),0) as total FROM documents WHERE ${uf} AND type='invoice' AND status='paid' AND strftime('%Y',date)=? GROUP BY month ORDER BY month ASC`, p([String(currentYear)])),
+      db.all(`SELECT d.id,d.type,d.number,d.date,d.status,d.total_ht,d.total_ttc,c.name as client_name FROM documents d LEFT JOIN clients c ON d.client_id=c.id WHERE ${uf} ORDER BY d.created_at DESC LIMIT 5`, userId ? [userId] : [])
     ]);
 
     res.json({

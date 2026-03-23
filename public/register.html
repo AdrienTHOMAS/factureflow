@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Créer mon compte — FactureFlow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a14;
+      --card: #12122a;
+      --surface: #1a1a35;
+      --gold: #e2b714;
+      --gold-dim: #b08c0e;
+      --gold-soft: rgba(226,183,20,0.08);
+      --text: #e8e8f0;
+      --muted: #8888aa;
+      --white: #ffffff;
+      --error: #e74c3c;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .brand {
+      display: flex; align-items: center; gap: 10px;
+      font-family: 'Syne', sans-serif; font-weight: 800; font-size: 22px;
+      color: var(--white); text-decoration: none;
+      margin-bottom: 40px;
+    }
+
+    .brand-logo {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: var(--gold); display: flex; align-items: center; justify-content: center;
+      font-family: 'Syne', sans-serif; font-weight: 800; font-size: 20px; color: var(--bg);
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 40px;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 20px;
+      background: var(--gold-soft); border: 1px solid rgba(226,183,20,0.15);
+      font-size: 12px; color: var(--gold); font-weight: 500;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    input[type="email"],
+    input[type="password"],
+    input[type="text"] {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 15px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus { border-color: var(--gold); }
+    input::placeholder { color: var(--muted); }
+
+    .btn {
+      width: 100%;
+      padding: 13px;
+      background: var(--gold);
+      color: var(--bg);
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      margin-top: 8px;
+    }
+
+    .btn:hover { background: #f0c820; transform: translateY(-1px); }
+    .btn:active { transform: none; }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    .error-msg {
+      display: none;
+      background: rgba(231,76,60,0.1);
+      border: 1px solid rgba(231,76,60,0.3);
+      color: var(--error);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+
+    .footer-link {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .footer-link a { color: var(--gold); font-weight: 500; }
+
+    .back-home {
+      text-align: center;
+      margin-top: 16px;
+      font-size: 13px;
+    }
+
+    .back-home a { color: var(--muted); }
+    .back-home a:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+
+<a href="/" class="brand">
+  <div class="brand-logo">F</div>
+  FactureFlow
+</a>
+
+<div class="card">
+  <div class="badge">✨ 100% gratuit</div>
+  <h1>Créer mon compte</h1>
+  <p class="subtitle">Commencez à facturer en 2 minutes</p>
+
+  <div class="error-msg" id="errorMsg"></div>
+
+  <form id="registerForm" onsubmit="return handleRegister(event)">
+    <div class="form-group">
+      <label for="company_name">Nom de votre entreprise</label>
+      <input type="text" id="company_name" placeholder="Ma Super Entreprise" autocomplete="organization">
+    </div>
+    <div class="form-group">
+      <label for="email">Email</label>
+      <input type="email" id="email" placeholder="votre@email.fr" required autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label for="password">Mot de passe <span style="color:var(--muted);font-weight:400">(6 caractères min.)</span></label>
+      <input type="password" id="password" placeholder="••••••••" required autocomplete="new-password" minlength="6">
+    </div>
+    <button type="submit" class="btn" id="submitBtn">Créer mon compte gratuit →</button>
+  </form>
+
+  <div class="footer-link">
+    Déjà un compte ? <a href="/login">Se connecter</a>
+  </div>
+</div>
+
+<div class="back-home"><a href="/">← Retour à l'accueil</a></div>
+
+<script>
+async function handleRegister(e) {
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn');
+  const errorMsg = document.getElementById('errorMsg');
+  errorMsg.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Création en cours...';
+
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: document.getElementById('email').value,
+        password: document.getElementById('password').value,
+        company_name: document.getElementById('company_name').value
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      window.location.href = '/app';
+    } else {
+      errorMsg.textContent = data.error || 'Erreur lors de la création';
+      errorMsg.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Créer mon compte gratuit →';
+    }
+  } catch (err) {
+    errorMsg.textContent = 'Erreur réseau. Réessayez.';
+    errorMsg.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Créer mon compte gratuit →';
+  }
+}
+</script>
+</body>
+</html>

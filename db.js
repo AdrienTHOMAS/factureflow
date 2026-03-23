@@ -19,6 +19,15 @@ async function getDb() {
   await _db.exec('PRAGMA journal_mode = WAL');
   await _db.exec('PRAGMA foreign_keys = ON');
 
+  // ── Users (multi-tenant) ─────────────────────────────────────────────────
+  await _db.exec(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    company_name TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`);
+
   await _db.exec(`CREATE TABLE IF NOT EXISTS business_profile (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     name TEXT NOT NULL DEFAULT '',
@@ -43,6 +52,7 @@ async function getDb() {
 
   await _db.exec(`CREATE TABLE IF NOT EXISTS clients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     email TEXT NOT NULL DEFAULT '',
     address TEXT NOT NULL DEFAULT '',
@@ -57,6 +67,7 @@ async function getDb() {
 
   await _db.exec(`CREATE TABLE IF NOT EXISTS documents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     type TEXT NOT NULL CHECK (type IN ('invoice', 'quote')),
     number TEXT NOT NULL UNIQUE,
     client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
@@ -91,6 +102,17 @@ async function getDb() {
     last_number INTEGER NOT NULL DEFAULT 0,
     UNIQUE(type, year)
   )`);
+
+  // ── Migration douce : ajouter user_id aux tables existantes si absent ─────
+  const clientsCols = await _db.all(`PRAGMA table_info(clients)`);
+  if (!clientsCols.find(c => c.name === 'user_id')) {
+    await _db.exec(`ALTER TABLE clients ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE`);
+  }
+
+  const documentsCols = await _db.all(`PRAGMA table_info(documents)`);
+  if (!documentsCols.find(c => c.name === 'user_id')) {
+    await _db.exec(`ALTER TABLE documents ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE`);
+  }
 
   return _db;
 }
