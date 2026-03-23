@@ -297,7 +297,20 @@ async function renderDocuments(type) {
   const labelPlural = type === 'invoice' ? 'Factures' : 'Devis';
   const icon = type === 'invoice' ? '📄' : '📋';
 
-  tb.innerHTML = `<button class="btn btn-primary" onclick="openDocumentModal('${type}')">+ Nouveau${type === 'invoice' ? '' : ''} ${label}</button>`;
+  tb.innerHTML = '';
+  const tbDiv = document.createElement('div');
+  tbDiv.className = 'flex gap-2';
+  const csvBtn = document.createElement('button');
+  csvBtn.className = 'btn btn-secondary';
+  csvBtn.textContent = 'Exporter CSV';
+  csvBtn.onclick = () => exportCSV(type);
+  const newBtn = document.createElement('button');
+  newBtn.className = 'btn btn-primary';
+  newBtn.textContent = '+ Nouveau ' + label;
+  newBtn.onclick = () => openDocumentModal(type);
+  tbDiv.appendChild(csvBtn);
+  tbDiv.appendChild(newBtn);
+  tb.appendChild(tbDiv);
 
   pc.innerHTML = '<div style="color:var(--text-muted);padding:40px;text-align:center">Chargement...</div>';
 
@@ -338,6 +351,8 @@ async function renderDocuments(type) {
               ${type === 'invoice' && d.status !== 'paid' ? `<button class="dropdown-item" onclick="setDocStatus(${d.id},'paid');closeDropdowns()">✅ Marquer payée</button>` : ''}
               ${d.status === 'draft' ? `<button class="dropdown-item" onclick="setDocStatus(${d.id},'sent');closeDropdowns()">📤 Marquer envoyé(e)</button>` : ''}
               ${type === 'quote' && d.status === 'sent' ? `<button class="dropdown-item" onclick="setDocStatus(${d.id},'accepted');closeDropdowns()">👍 Accepté</button>` : ''}
+              <button class="dropdown-item" onclick="duplicateDocument(${d.id});closeDropdowns()">📑 Dupliquer</button>
+              ${type === 'quote' && d.status !== 'accepted' ? `<button class="dropdown-item" onclick="convertQuoteToInvoice(${d.id});closeDropdowns()">🔄 Convertir en facture</button>` : ''}
               <button class="dropdown-item" onclick="previewDoc(${d.id});closeDropdowns()">🖨️ Aperçu</button>
               <button class="dropdown-item danger" onclick="deleteDocument(${d.id});closeDropdowns()">🗑️ Supprimer</button>
             </div>
@@ -452,6 +467,8 @@ async function openDocumentDetail(id) {
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="editDocument(${doc.id});document.getElementById('detailModal').remove()">✏️ Modifier</button>
+        <button class="btn btn-secondary" onclick="duplicateDocument(${doc.id});document.getElementById('detailModal').remove()">📑 Dupliquer</button>
+        ${doc.type === 'quote' && doc.status !== 'accepted' ? `<button class="btn btn-success" onclick="convertQuoteToInvoice(${doc.id})">🔄 Convertir en facture</button>` : ''}
         <button class="btn btn-ghost" onclick="previewDoc(${doc.id})">🖨️ Aperçu PDF</button>
         <button class="btn btn-primary" onclick="downloadPdf(${doc.id},'${doc.number}')">⬇️ Télécharger PDF</button>
       </div>
@@ -787,6 +804,28 @@ async function deleteDocument(id) {
   });
 }
 
+async function convertQuoteToInvoice(id) {
+  try {
+    const result = await POST('/documents/' + id + '/convert');
+    toast('Devis converti en facture ' + result.number + ' ✓');
+    const detailModal = document.getElementById('detailModal');
+    if (detailModal) detailModal.remove();
+    navigateTo('invoices');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function duplicateDocument(id) {
+  try {
+    const result = await POST('/documents/' + id + '/duplicate');
+    toast('Document dupliqué → ' + result.number + ' ✓');
+    navigateTo(state.currentPage);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
 async function setDocStatus(id, status) {
   try {
     await PATCH('/documents/' + id + '/status', { status });
@@ -1084,7 +1123,109 @@ function escJs(s) {
   return String(s).replace(/'/g, "\\'").replace(/"/g, '\\"');
 }
 
+// ── CSV Export ──────────────────────────────────────────────
+async function exportCSV(type) {
+  try {
+    const docs = await GET('/documents?type=' + type);
+    if (docs.length === 0) { toast('Aucun document à exporter', 'info'); return; }
+
+    const statusLabels = {
+      draft: 'Brouillon', sent: 'Envoyé', paid: 'Payée',
+      accepted: 'Accepté', refused: 'Refusé', cancelled: 'Annulé'
+    };
+
+    const header = 'Numéro;Date;Client;Montant HT;Montant TTC;Statut';
+    const rows = docs.map(d =>
+      [d.number, d.date, d.client_name || '', d.total_ht.toFixed(2), d.total_ttc.toFixed(2), statusLabels[d.status] || d.status]
+        .map(v => '"' + String(v).replace(/"/g, '""') + '"').join(';')
+    );
+
+    const csv = '\uFEFF' + header + '\n' + rows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (type === 'invoice' ? 'factures' : 'devis') + '_export.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('CSV exporté ✓');
+  } catch (e) {
+    toast('Erreur export : ' + e.message, 'error');
+  }
+}
+
+// ── Global Search ───────────────────────────────────────────
+let searchTimeout = null;
+
+function initGlobalSearch() {
+  const topbar = document.querySelector('.topbar');
+  const searchWrap = document.createElement('div');
+  searchWrap.className = 'global-search-wrap';
+  searchWrap.innerHTML = '<input type="text" class="global-search-input" placeholder="Rechercher clients, documents..." id="globalSearchInput">'
+    + '<div class="global-search-results" id="globalSearchResults"></div>';
+  topbar.insertBefore(searchWrap, document.getElementById('topbarActions'));
+
+  const input = document.getElementById('globalSearchInput');
+  input.addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    const q = this.value.trim();
+    if (q.length < 2) { document.getElementById('globalSearchResults').classList.remove('open'); return; }
+    searchTimeout = setTimeout(() => performGlobalSearch(q), 250);
+  });
+
+  input.addEventListener('focus', function() {
+    if (this.value.trim().length >= 2) performGlobalSearch(this.value.trim());
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.global-search-wrap')) {
+      document.getElementById('globalSearchResults').classList.remove('open');
+    }
+  });
+}
+
+async function performGlobalSearch(q) {
+  try {
+    const data = await GET('/search?q=' + encodeURIComponent(q));
+    const results = document.getElementById('globalSearchResults');
+
+    if (data.clients.length === 0 && data.documents.length === 0) {
+      results.innerHTML = '<div class="search-empty">Aucun résultat</div>';
+      results.classList.add('open');
+      return;
+    }
+
+    let html = '';
+
+    if (data.clients.length > 0) {
+      html += '<div class="search-section-label">Clients</div>';
+      html += data.clients.map(c =>
+        '<button class="search-result-item" onclick="navigateTo(\'clients\');document.getElementById(\'globalSearchResults\').classList.remove(\'open\');document.getElementById(\'globalSearchInput\').value=\'\'">'
+        + '<span class="search-result-icon">👤</span>'
+        + '<span class="search-result-text">' + escHtml(c.name) + (c.email ? ' — ' + escHtml(c.email) : '') + '</span>'
+        + '</button>'
+      ).join('');
+    }
+
+    if (data.documents.length > 0) {
+      html += '<div class="search-section-label">Documents</div>';
+      html += data.documents.map(d =>
+        '<button class="search-result-item" onclick="openDocumentDetail(' + d.id + ');document.getElementById(\'globalSearchResults\').classList.remove(\'open\');document.getElementById(\'globalSearchInput\').value=\'\'">'
+        + '<span class="search-result-icon">' + (d.type === 'invoice' ? '📄' : '📋') + '</span>'
+        + '<span class="search-result-text">' + escHtml(d.number) + ' — ' + escHtml(d.client_name || '') + ' — ' + fmt(d.total_ht) + '</span>'
+        + '</button>'
+      ).join('');
+    }
+
+    results.innerHTML = html;
+    results.classList.add('open');
+  } catch (e) {
+    // silently fail search
+  }
+}
+
 // ── Init ───────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  initGlobalSearch();
   navigateTo('dashboard');
 });

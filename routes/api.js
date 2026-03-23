@@ -233,6 +233,84 @@ router.delete('/documents/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Convert Quote → Invoice ──────────────────────────────────────────────────
+
+router.post('/documents/:id/convert', async (req, res) => {
+  try {
+    const db = await getDb();
+    const doc = await db.get('SELECT * FROM documents WHERE id=?', req.params.id);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    if (doc.type !== 'quote') return res.status(400).json({ error: 'Only quotes can be converted to invoices' });
+
+    const items = await db.all('SELECT * FROM document_items WHERE document_id=? ORDER BY sort_order ASC', req.params.id);
+    const number = await generateDocumentNumber(db, 'invoice');
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const result = await db.run(
+      `INSERT INTO documents (type,number,client_id,date,due_date,notes,total_ht,total_ttc,tva_rate,tva_amount) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      ['invoice', number, doc.client_id, todayStr, doc.due_date || null, doc.notes, doc.total_ht, doc.total_ttc, doc.tva_rate, doc.tva_amount]);
+
+    const newId = result.lastID;
+    for (const item of items) {
+      await db.run(
+        `INSERT INTO document_items (document_id,description,quantity,unit,unit_price,total,sort_order) VALUES (?,?,?,?,?,?,?)`,
+        [newId, item.description, item.quantity, item.unit, item.unit_price, item.total, item.sort_order]);
+    }
+
+    // Mark quote as accepted
+    await db.run(`UPDATE documents SET status='accepted',updated_at=datetime('now') WHERE id=?`, req.params.id);
+
+    res.status(201).json({ id: newId, number });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Duplicate Document ───────────────────────────────────────────────────────
+
+router.post('/documents/:id/duplicate', async (req, res) => {
+  try {
+    const db = await getDb();
+    const doc = await db.get('SELECT * FROM documents WHERE id=?', req.params.id);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    const items = await db.all('SELECT * FROM document_items WHERE document_id=? ORDER BY sort_order ASC', req.params.id);
+    const number = await generateDocumentNumber(db, doc.type);
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const result = await db.run(
+      `INSERT INTO documents (type,number,client_id,date,due_date,notes,total_ht,total_ttc,tva_rate,tva_amount,status) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [doc.type, number, doc.client_id, todayStr, doc.due_date || null, doc.notes, doc.total_ht, doc.total_ttc, doc.tva_rate, doc.tva_amount, 'draft']);
+
+    const newId = result.lastID;
+    for (const item of items) {
+      await db.run(
+        `INSERT INTO document_items (document_id,description,quantity,unit,unit_price,total,sort_order) VALUES (?,?,?,?,?,?,?)`,
+        [newId, item.description, item.quantity, item.unit, item.unit_price, item.total, item.sort_order]);
+    }
+
+    res.status(201).json({ id: newId, number });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Search ───────────────────────────────────────────────────────────────────
+
+router.get('/search', async (req, res) => {
+  try {
+    const db = await getDb();
+    const q = (req.query.q || '').trim();
+    if (!q) return res.json({ clients: [], documents: [] });
+
+    const like = `%${q}%`;
+    const [clients, documents] = await Promise.all([
+      db.all(`SELECT * FROM clients WHERE name LIKE ? OR email LIKE ? OR siret LIKE ? ORDER BY name ASC LIMIT 10`, [like, like, like]),
+      db.all(`SELECT d.*,c.name as client_name FROM documents d LEFT JOIN clients c ON d.client_id=c.id
+        WHERE d.number LIKE ? OR c.name LIKE ? OR CAST(d.total_ht AS TEXT) LIKE ? OR CAST(d.total_ttc AS TEXT) LIKE ?
+        ORDER BY d.created_at DESC LIMIT 10`, [like, like, like, like])
+    ]);
+
+    res.json({ clients, documents });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Stats / Dashboard ────────────────────────────────────────────────────────
 
 router.get('/stats', async (req, res) => {
