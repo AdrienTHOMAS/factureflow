@@ -1,0 +1,18 @@
+{
+  "name": "factureflow",
+  "version": "1.0.0",
+  "description": "French invoice and quote generator for auto-entrepreneurs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.7",
+    "sqlite": "^5.1.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

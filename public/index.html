@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FactureFlow — Facturation pour auto-entrepreneurs</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23e2b714'/><text y='24' x='5' font-size='22' font-weight='800' font-family='sans-serif' fill='%231a1a2e'>F</text></svg>">
+</head>
+<body>
+
+<div class="app-layout">
+
+  <!-- Sidebar overlay (mobile) -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-logo">F</div>
+      <div class="sidebar-brand-text">
+        <h1>FactureFlow</h1>
+        <span>Auto-entrepreneur</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Principal</div>
+      <button class="nav-item active" data-page="dashboard" onclick="navigateTo('dashboard')">
+        <span class="icon">📊</span> Tableau de bord
+      </button>
+      <button class="nav-item" data-page="invoices" onclick="navigateTo('invoices')">
+        <span class="icon">📄</span> Factures
+      </button>
+      <button class="nav-item" data-page="quotes" onclick="navigateTo('quotes')">
+        <span class="icon">📋</span> Devis
+      </button>
+
+      <div class="nav-section-label">Gestion</div>
+      <button class="nav-item" data-page="clients" onclick="navigateTo('clients')">
+        <span class="icon">👥</span> Clients
+      </button>
+      <button class="nav-item" data-page="revenue" onclick="navigateTo('revenue')">
+        <span class="icon">💰</span> Revenus
+      </button>
+
+      <div class="nav-section-label">Paramètres</div>
+      <button class="nav-item" data-page="profile" onclick="navigateTo('profile')">
+        <span class="icon">⚙️</span> Mon entreprise
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="text-muted text-sm">FactureFlow v1.0</div>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <div class="main-content">
+    <header class="topbar">
+      <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+      <div class="topbar-title" id="topbarTitle">Tableau de bord</div>
+      <div id="topbarActions"></div>
+    </header>
+
+    <div class="page-content" id="pageContent">
+      <!-- Pages rendered here -->
+    </div>
+  </div>
+</div>
+
+<!-- ── Modals ── -->
+
+<!-- Client Modal -->
+<div class="modal-overlay" id="clientModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="clientModalTitle">Nouveau client</div>
+      <button class="modal-close" onclick="closeModal('clientModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="clientId">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Nom / Raison sociale *</label>
+          <input type="text" id="clientName" placeholder="Acme SAS">
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="clientEmail" placeholder="contact@acme.fr">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Adresse</label>
+        <input type="text" id="clientAddress" placeholder="12 rue de la Paix">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Code postal</label>
+          <input type="text" id="clientPostal" placeholder="75001">
+        </div>
+        <div class="form-group">
+          <label>Ville</label>
+          <input type="text" id="clientCity" placeholder="Paris">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Pays</label>
+          <input type="text" id="clientCountry" placeholder="France" value="France">
+        </div>
+        <div class="form-group">
+          <label>SIRET</label>
+          <input type="text" id="clientSiret" placeholder="12345678900012">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Téléphone</label>
+        <input type="tel" id="clientPhone" placeholder="+33 1 23 45 67 89">
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="clientNotes" rows="2" placeholder="Informations complémentaires..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('clientModal')">Annuler</button>
+      <button class="btn btn-primary" onclick="saveClient()">💾 Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Document Modal -->
+<div class="modal-overlay" id="documentModal">
+  <div class="modal modal-xl">
+    <div class="modal-header">
+      <div class="modal-title" id="documentModalTitle">Nouvelle facture</div>
+      <button class="modal-close" onclick="closeModal('documentModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="docId">
+      <input type="hidden" id="docType">
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Client *</label>
+          <select id="docClient">
+            <option value="">— Sélectionner un client —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Date d'émission *</label>
+          <input type="date" id="docDate">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label id="dueDateLabel">Date d'échéance</label>
+          <input type="date" id="docDueDate">
+        </div>
+        <div class="form-group" id="docStatusGroup">
+          <label>Statut</label>
+          <select id="docStatus">
+            <option value="draft">Brouillon</option>
+            <option value="sent">Envoyé(e)</option>
+            <option value="paid">Payée</option>
+            <option value="accepted">Accepté</option>
+            <option value="refused">Refusé</option>
+            <option value="cancelled">Annulé(e)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- TVA Toggle -->
+      <div class="form-group">
+        <div class="toggle-group">
+          <label class="toggle">
+            <input type="checkbox" id="tvaToggle" onchange="updateTotals()">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-label">Assujetti à la TVA</span>
+          <span class="text-muted text-sm" id="tvaExemptNote" style="margin-left:8px">TVA non applicable, article 293 B du CGI</span>
+        </div>
+      </div>
+
+      <div class="form-group hidden" id="tvaRateGroup">
+        <label>Taux de TVA (%)</label>
+        <select id="tvaRate" onchange="updateTotals()">
+          <option value="20">20% (taux normal)</option>
+          <option value="10">10% (taux intermédiaire)</option>
+          <option value="5.5">5,5% (taux réduit)</option>
+          <option value="2.1">2,1% (taux super-réduit)</option>
+        </select>
+      </div>
+
+      <!-- Line Items -->
+      <div class="form-group">
+        <label>Prestations / Produits *</label>
+        <div class="items-table-wrap">
+          <div class="items-header">
+            <span>Description</span>
+            <span>Qté</span>
+            <span>Unité</span>
+            <span>Prix unit. HT</span>
+            <span>Total HT</span>
+            <span></span>
+          </div>
+          <div id="itemsList"></div>
+        </div>
+        <button class="btn btn-ghost btn-sm mt-1" onclick="addItem()">＋ Ajouter une ligne</button>
+      </div>
+
+      <!-- Totals -->
+      <div class="totals-summary mb-3">
+        <div class="totals-box">
+          <div class="totals-row">
+            <span>Total HT</span>
+            <span id="totalHT">0,00 €</span>
+          </div>
+          <div class="totals-row" id="tvaRow" style="display:none">
+            <span id="tvaLabel">TVA (20%)</span>
+            <span id="totalTVA">0,00 €</span>
+          </div>
+          <div class="totals-row grand-total">
+            <span id="totalTTCLabel">Total</span>
+            <span id="totalTTC">0,00 €</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Notes / Informations complémentaires</label>
+        <textarea id="docNotes" rows="3" placeholder="Informations particulières, conditions spéciales..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('documentModal')">Annuler</button>
+      <button class="btn btn-primary" onclick="saveDocument()">💾 Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Modal -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <div class="modal-title" id="confirmTitle">Confirmer</div>
+      <button class="modal-close" onclick="closeModal('confirmModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirmMessage" style="color:var(--text)"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('confirmModal')">Annuler</button>
+      <button class="btn btn-danger" id="confirmBtn" onclick="">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>
