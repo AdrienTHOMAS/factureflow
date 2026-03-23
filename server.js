@@ -95,6 +95,10 @@ getDb().then(async (db) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // Demo route (public)
+  const demoRouter = require('./routes/demo');
+  app.use('/demo', demoRouter);
+
   // Auth routes (public — register, login, logout, me)
   app.use('/api/auth', authRouter);
 

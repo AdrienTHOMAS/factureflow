@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db');
+const XLSX = require('xlsx');
 
 // Helper : user_id depuis la session (null si pas de session, pour données legacy)
 function uid(req) {
@@ -380,6 +381,121 @@ router.get('/search', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Export Excel (XLSX) ─────────────────────────────────────────────────────
+
+router.get('/documents/export/xlsx', async (req, res) => {
+  try {
+    const db = await getDb();
+    const { type } = req.query;
+    const userId = uid(req);
+
+    let query = `SELECT d.*,c.name as client_name
+      FROM documents d LEFT JOIN clients c ON d.client_id=c.id WHERE 1=1`;
+    const params = [];
+
+    if (userId) {
+      query += ' AND (d.user_id = ? OR d.user_id IS NULL)';
+      params.push(userId);
+    } else {
+      query += ' AND d.user_id IS NULL';
+    }
+
+    if (type) { query += ' AND d.type=?'; params.push(type); }
+    query += ' ORDER BY d.created_at DESC';
+
+    const docs = await db.all(query, params);
+
+    const statusLabels = {
+      draft: 'Brouillon', sent: 'Envoyé', paid: 'Payée',
+      accepted: 'Accepté', refused: 'Refusé', cancelled: 'Annulé'
+    };
+    const typeLabels = { invoice: 'Facture', quote: 'Devis' };
+
+    const rows = docs.map(d => ({
+      'Numéro':      d.number,
+      'Type':        typeLabels[d.type] || d.type,
+      'Client':      d.client_name || '',
+      'Date':        d.date,
+      'Montant HT':  d.total_ht,
+      'Montant TTC': d.total_ttc,
+      'Statut':      statusLabels[d.status] || d.status,
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 18 }, { wch: 10 }, { wch: 28 },
+      { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 12 }
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, type === 'invoice' ? 'Factures' : type === 'quote' ? 'Devis' : 'Documents');
+
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const filename = (type === 'invoice' ? 'factures' : type === 'quote' ? 'devis' : 'documents') + '_export.xlsx';
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buf);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Reminder (Relance automatique) ──────────────────────────────────────────
+
+router.post('/documents/:id/reminder', async (req, res) => {
+  try {
+    const db = await getDb();
+    const userId = uid(req);
+    const userFilter = userId ? '(d.user_id = ? OR d.user_id IS NULL)' : 'd.user_id IS NULL';
+    const queryParams = userId ? [req.params.id, userId] : [req.params.id];
+
+    // Add reminded_at column if not present
+    const cols = await db.all('PRAGMA table_info(documents)');
+    if (!cols.find(c => c.name === 'reminded_at')) {
+      await db.exec('ALTER TABLE documents ADD COLUMN reminded_at TEXT');
+    }
+
+    const doc = await db.get(`
+      SELECT d.*,c.name as client_name,bp.name as company_name
+      FROM documents d
+      LEFT JOIN clients c ON d.client_id=c.id
+      LEFT JOIN business_profile bp ON bp.id=1
+      WHERE d.id=? AND ${userFilter}`, queryParams);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    if (doc.type !== 'invoice') return res.status(400).json({ error: 'Les relances ne concernent que les factures' });
+
+    const clientName = doc.client_name || 'Madame, Monsieur';
+    const docNumber  = doc.number;
+    const amount     = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(doc.total_ttc);
+    const dueDate    = doc.due_date
+      ? new Date(doc.due_date).toLocaleDateString('fr-FR')
+      : 'la date convenue';
+    const companyName = doc.company_name || 'Notre entreprise';
+    const alreadyReminded = doc.reminded_at;
+
+    let intro = alreadyReminded
+      ? `Je me permets de vous contacter à nouveau concernant`
+      : `Sauf erreur de notre part, nous n'avons pas encore reçu le règlement de`;
+
+    const reminderText = `Objet : Relance – Facture ${docNumber}
+
+Madame, Monsieur ${clientName},
+
+${intro} la facture n° ${docNumber} d'un montant de ${amount}, dont l'échéance était fixée au ${dueDate}.
+
+Nous vous serions reconnaissants de bien vouloir procéder au règlement dans les meilleurs délais.
+
+Si ce paiement a déjà été effectué, veuillez considérer ce message comme sans objet et nous en excuser.
+
+En cas de difficulté, n'hésitez pas à nous contacter afin de trouver une solution adaptée.
+
+Cordialement,
+${companyName}`;
+
+    await db.run(`UPDATE documents SET reminded_at=datetime('now'),updated_at=datetime('now') WHERE id=?`, req.params.id);
+
+    res.json({ reminderText, remindedAt: new Date().toISOString() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Stats / Dashboard ────────────────────────────────────────────────────────
 
 router.get('/stats', async (req, res) => {
@@ -390,9 +506,22 @@ router.get('/stats', async (req, res) => {
     const userId = uid(req);
 
     const uf = userId ? '(user_id = ? OR user_id IS NULL)' : 'user_id IS NULL';
+    const duf = userId ? '(d.user_id = ? OR d.user_id IS NULL)' : 'd.user_id IS NULL';
     const p = (extra) => userId ? [userId, ...extra] : [...extra];
 
-    const [yearlyRevenue, monthlyRevenue, invoiceCount, quoteCount, pendingAmount, clientCount, monthlyData, recentDocs] = await Promise.all([
+    const now = new Date().toISOString().split('T')[0];
+
+    // Build last-12-months date range
+    const last12Months = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - i);
+      last12Months.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
+    }
+
+    const [yearlyRevenue, monthlyRevenue, invoiceCount, quoteCount, pendingAmount, clientCount, monthlyData, recentDocs,
+           convertedQuotes, totalQuotes, overdueRows, topClientsRows, caLast12Raw] = await Promise.all([
       db.get(`SELECT COALESCE(SUM(total_ht),0) as total FROM documents WHERE ${uf} AND type='invoice' AND status='paid' AND strftime('%Y',date)=?`, p([String(currentYear)])),
       db.get(`SELECT COALESCE(SUM(total_ht),0) as total FROM documents WHERE ${uf} AND type='invoice' AND status='paid' AND strftime('%Y',date)=? AND strftime('%m',date)=?`, p([String(currentYear), String(currentMonth).padStart(2,'0')])),
       db.get(`SELECT COUNT(*) as count FROM documents WHERE ${uf} AND type='invoice' AND status!='cancelled'`, userId ? [userId] : []),
@@ -400,8 +529,32 @@ router.get('/stats', async (req, res) => {
       db.get(`SELECT COALESCE(SUM(total_ht),0) as total FROM documents WHERE ${uf} AND type='invoice' AND status='sent'`, userId ? [userId] : []),
       db.get(`SELECT COUNT(*) as count FROM clients WHERE ${uf}`, userId ? [userId] : []),
       db.all(`SELECT strftime('%m',date) as month,COALESCE(SUM(total_ht),0) as total FROM documents WHERE ${uf} AND type='invoice' AND status='paid' AND strftime('%Y',date)=? GROUP BY month ORDER BY month ASC`, p([String(currentYear)])),
-      db.all(`SELECT d.id,d.type,d.number,d.date,d.status,d.total_ht,d.total_ttc,c.name as client_name FROM documents d LEFT JOIN clients c ON d.client_id=c.id WHERE ${uf} ORDER BY d.created_at DESC LIMIT 5`, userId ? [userId] : [])
+      db.all(`SELECT d.id,d.type,d.number,d.date,d.status,d.total_ht,d.total_ttc,c.name as client_name FROM documents d LEFT JOIN clients c ON d.client_id=c.id WHERE ${duf} ORDER BY d.created_at DESC LIMIT 5`, userId ? [userId] : []),
+      // Devis convertis = status='accepted'
+      db.get(`SELECT COUNT(*) as count FROM documents WHERE ${uf} AND type='quote' AND status='accepted'`, userId ? [userId] : []),
+      db.get(`SELECT COUNT(*) as count FROM documents WHERE ${uf} AND type='quote' AND status!='cancelled'`, userId ? [userId] : []),
+      // Factures en retard
+      db.all(`SELECT d.id,d.number,d.date,d.due_date,d.total_ttc,c.name as client_name FROM documents d LEFT JOIN clients c ON d.client_id=c.id WHERE ${duf} AND d.type='invoice' AND d.status!='paid' AND d.status!='cancelled' AND d.due_date IS NOT NULL AND d.due_date < ? ORDER BY d.due_date ASC`, userId ? [userId, now] : [now]),
+      // Top 3 clients par CA
+      db.all(`SELECT c.id,c.name,COALESCE(SUM(d.total_ht),0) as ca FROM documents d LEFT JOIN clients c ON d.client_id=c.id WHERE ${duf} AND d.type='invoice' AND d.status='paid' GROUP BY c.id ORDER BY ca DESC LIMIT 3`, userId ? [userId] : []),
+      // CA 12 derniers mois
+      db.all(`SELECT strftime('%Y',date) as year,strftime('%m',date) as month,COALESCE(SUM(total_ht),0) as total FROM documents WHERE ${uf} AND type='invoice' AND status='paid' AND date >= date('now','-12 months') GROUP BY year,month`, userId ? [userId] : []),
     ]);
+
+    // Build last 12 months array
+    const caLast12 = last12Months.map(({ year, month }) => {
+      const found = caLast12Raw.find(r => parseInt(r.year) === year && parseInt(r.month) === month);
+      return {
+        year,
+        month,
+        label: `${String(month).padStart(2,'0')}/${year}`,
+        total: found ? found.total : 0
+      };
+    });
+
+    const conversionRate = totalQuotes.count > 0
+      ? Math.round((convertedQuotes.count / totalQuotes.count) * 100)
+      : 0;
 
     res.json({
       yearlyRevenue: yearlyRevenue.total,
@@ -411,7 +564,14 @@ router.get('/stats', async (req, res) => {
       pendingAmount: pendingAmount.total,
       clientCount: clientCount.count,
       monthlyData,
-      recentDocs
+      recentDocs,
+      // Pro stats
+      caLast12,
+      convertedQuotes: convertedQuotes.count,
+      totalQuotes: totalQuotes.count,
+      conversionRate,
+      overdueInvoices: overdueRows,
+      topClients: topClientsRows,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

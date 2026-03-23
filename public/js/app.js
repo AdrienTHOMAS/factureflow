@@ -285,6 +285,97 @@ async function renderDashboard() {
         </table>
       </div>
     </div>
+
+    ${renderProStats(stats)}
+  `;
+}
+
+// ── Pro Stats Section ──────────────────────────────────────
+function renderProStats(stats) {
+  // CA 12 derniers mois chart
+  const caMonths = stats.caLast12 || [];
+  const caMax = Math.max(...caMonths.map(m => m.total), 1);
+  const caBars = caMonths.map(m => {
+    const pct = Math.round((m.total / caMax) * 100);
+    return `<div class="chart-bar-wrap" title="${m.label}: ${fmt(m.total)}">
+      <div class="chart-bar" style="height:${pct}%"></div>
+      <div class="chart-label" style="font-size:9px">${m.label.slice(0,5)}</div>
+    </div>`;
+  }).join('');
+
+  // Overdue invoices
+  const overdueList = (stats.overdueInvoices || []).map(d => `
+    <tr>
+      <td><strong>${d.number}</strong></td>
+      <td>${d.client_name || '—'}</td>
+      <td style="color:var(--danger)">${fmtDate(d.due_date)}</td>
+      <td class="text-right">${fmt(d.total_ttc)}</td>
+      <td><button class="btn btn-icon btn-sm" onclick="sendReminder(${d.id})" title="Relancer">🔔</button></td>
+    </tr>`).join('') || `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:16px">✅ Aucune facture en retard</td></tr>`;
+
+  // Top clients
+  const topClientsList = (stats.topClients || []).map((c, i) => `
+    <tr>
+      <td><span style="color:var(--gold);font-weight:bold">${['🥇','🥈','🥉'][i]}</span> ${c.name || '—'}</td>
+      <td class="text-right">${fmt(c.ca)}</td>
+    </tr>`).join('') || `<tr><td colspan="2" style="text-align:center;color:var(--text-muted);padding:16px">Aucune donnée</td></tr>`;
+
+  return `
+    <div style="margin-top:24px;margin-bottom:8px">
+      <h3 style="margin:0 0 12px;color:var(--text-muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em">✨ Stats Pro</h3>
+    </div>
+
+    <div class="grid-2 mb-3" style="align-items:start">
+      <div class="card">
+        <div class="card-header"><div class="card-title">📈 CA — 12 derniers mois</div></div>
+        <div class="chart-bars">${caBars || '<div style="color:var(--text-muted);padding:20px;text-align:center">Pas encore de données</div>'}</div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">📋 Conversion devis → factures</div></div>
+        <div style="padding:8px 0">
+          <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+            <div class="stat-card" style="padding:16px">
+              <span class="stat-icon" style="font-size:20px">📋</span>
+              <div class="stat-value">${stats.totalQuotes || 0}</div>
+              <div class="stat-label">Devis total</div>
+            </div>
+            <div class="stat-card" style="padding:16px">
+              <span class="stat-icon" style="font-size:20px">✅</span>
+              <div class="stat-value">${stats.convertedQuotes || 0}</div>
+              <div class="stat-label">Convertis</div>
+            </div>
+            <div class="stat-card" style="padding:16px">
+              <span class="stat-icon" style="font-size:20px">📊</span>
+              <div class="stat-value">${stats.conversionRate || 0}%</div>
+              <div class="stat-label">Taux conversion</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2 mb-3" style="align-items:start">
+      <div class="card">
+        <div class="card-header"><div class="card-title">⚠️ Factures en retard</div></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Numéro</th><th>Client</th><th>Échéance</th><th class="text-right">TTC</th><th></th></tr></thead>
+            <tbody>${overdueList}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">🏆 Top 3 clients par CA</div></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Client</th><th class="text-right">CA HT</th></tr></thead>
+            <tbody>${topClientsList}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -304,11 +395,16 @@ async function renderDocuments(type) {
   csvBtn.className = 'btn btn-secondary';
   csvBtn.textContent = 'Exporter CSV';
   csvBtn.onclick = () => exportCSV(type);
+  const xlsxBtn = document.createElement('button');
+  xlsxBtn.className = 'btn btn-secondary';
+  xlsxBtn.textContent = '📊 Exporter Excel';
+  xlsxBtn.onclick = () => exportXLSX(type);
   const newBtn = document.createElement('button');
   newBtn.className = 'btn btn-primary';
   newBtn.textContent = '+ Nouveau ' + label;
   newBtn.onclick = () => openDocumentModal(type);
   tbDiv.appendChild(csvBtn);
+  tbDiv.appendChild(xlsxBtn);
   tbDiv.appendChild(newBtn);
   tb.appendChild(tbDiv);
 
@@ -354,6 +450,7 @@ async function renderDocuments(type) {
               <button class="dropdown-item" onclick="duplicateDocument(${d.id});closeDropdowns()">📑 Dupliquer</button>
               ${type === 'quote' && d.status !== 'accepted' ? `<button class="dropdown-item" onclick="convertQuoteToInvoice(${d.id});closeDropdowns()">🔄 Convertir en facture</button>` : ''}
               <button class="dropdown-item" onclick="previewDoc(${d.id});closeDropdowns()">🖨️ Aperçu</button>
+              ${type === 'invoice' && d.status !== 'paid' ? `<button class="dropdown-item" onclick="sendReminder(${d.id});closeDropdowns()">🔔 Relancer</button>` : ''}
               <button class="dropdown-item danger" onclick="deleteDocument(${d.id});closeDropdowns()">🗑️ Supprimer</button>
             </div>
           </div>
@@ -1152,6 +1249,44 @@ async function exportCSV(type) {
   } catch (e) {
     toast('Erreur export : ' + e.message, 'error');
   }
+}
+
+// ── Export Excel (XLSX) ────────────────────────────────────
+function exportXLSX(type) {
+  const params = type ? `?type=${type}` : '';
+  const a = document.createElement('a');
+  a.href = '/api/documents/export/xlsx' + params;
+  a.download = '';
+  a.click();
+  toast('Export Excel en cours… ✓');
+}
+
+// ── Relance automatique ────────────────────────────────────
+async function sendReminder(id) {
+  try {
+    const data = await POST(`/documents/${id}/reminder`, {});
+    // Show reminder text in a modal/alert for copy-paste
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = `
+      <div style="background:var(--bg-card);border-radius:12px;padding:24px;max-width:600px;width:100%;max-height:80vh;overflow:auto">
+        <h3 style="margin-top:0">🔔 Texte de relance</h3>
+        <textarea id="reminderTextArea" style="width:100%;height:280px;font-family:inherit;font-size:13px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-page);color:var(--text);resize:vertical" readonly>${escHtml(data.reminderText)}</textarea>
+        <div class="flex gap-2 mt-3" style="justify-content:flex-end">
+          <button class="btn btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('reminderTextArea').value).then(()=>toast('Copié ✓'))">📋 Copier</button>
+          <button class="btn btn-primary" onclick="this.closest('[style*=fixed]').remove()">Fermer</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    toast('Document marqué comme relancé ✓');
+  } catch (e) {
+    toast('Erreur relance : ' + e.message, 'error');
+  }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ── Global Search ───────────────────────────────────────────
