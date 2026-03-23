@@ -49,6 +49,11 @@ getDb().then(async (db) => {
   app.use('/api', apiRouter);
   app.use('/pdf', pdfRouter);
 
+  // Health check
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok', version: '1.0.0' });
+  });
+
   // Static files
   app.use(express.static(path.join(__dirname, 'public')));
 
