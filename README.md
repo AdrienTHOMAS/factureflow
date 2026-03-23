@@ -3,6 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![CI](https://github.com/AdrienTHOMAS/factureflow/actions/workflows/ci.yml/badge.svg)](https://github.com/AdrienTHOMAS/factureflow/actions/workflows/ci.yml)
 
 **Application de facturation gratuite et open source pour auto-entrepreneurs français.**
 
